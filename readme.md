@@ -8,7 +8,7 @@ the macro impls a trait for Fn, FnMut or FnOnce when the trait:
 
 - contains one and only one method
 
-- the method's has a receiver,and the receiver is `&self`, `&mut self` or `self`
+- the method has a receiver,and the receiver is `&self`, `&mut self` or `self`
 
 - has no generics in the trait or the method (maybe I will add generics in the macro)
 
