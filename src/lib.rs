@@ -4,7 +4,7 @@
 //!
 //! A simple macro that inspired by java's functional interface.
 //!
-//! the macro impls a trait for Fn, FnMut or FnOnce when the trait:
+//! the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 //!
 //! - contains one and only one method
 //! - the method has a receiver, and the receiver is `&self`, `&mut self` or `self`
