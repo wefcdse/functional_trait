@@ -78,13 +78,7 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
             .inputs
             .iter()
             .enumerate()
-            .filter(|(id, _v)| {
-                if *id == 0 && self_input != ReceiverType::None {
-                    false
-                } else {
-                    true
-                }
-            })
+            .filter(|(id, _v)| !(*id == 0 && self_input != ReceiverType::None))
             .map(|(_id, v)| v)
             .collect::<Vec<_>>()
     };
@@ -104,13 +98,13 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         .iter()
         .map(|arg| match arg {
             syn::FnArg::Receiver(_) => Err("no receiver except for the first arg"),
-            syn::FnArg::Typed(t) => Ok((&*t.ty).clone()),
+            syn::FnArg::Typed(t) => Ok((*t.ty).clone()),
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     let func_out_type: Type = match &func_sig.output {
         syn::ReturnType::Default => void_type(),
-        syn::ReturnType::Type(_, b) => (&**b).clone(),
+        syn::ReturnType::Type(_, b) => (**b).clone(),
     };
 
     // print_token_vec(&func_arg_ids);
