@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["wefcdse"]
 description = "A macro that impls trait for Fns"
+repository = "https://github.com/wefcdse/functional_trait"
 readme = "readme.md"
 license = "MIT OR Apache-2.0"
 keywords = ["utils", "macro", "functional"]
