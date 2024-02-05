@@ -1,4 +1,4 @@
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("../readme.md")]
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -244,6 +244,7 @@ fn gen_impl(
     )
 }
 
+#[doc = include_str!("../readme.md")]
 #[proc_macro_attribute]
 pub fn functional_trait(
     _args: proc_macro::TokenStream,
