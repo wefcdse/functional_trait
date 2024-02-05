@@ -54,14 +54,45 @@
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
-use syn::{ItemTrait, Type};
+use syn::{ItemTrait, LifetimeParam, Type, TypeReference};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone)]
 enum ReceiverType {
     None,
-    Ref,
-    Mut,
+    Ref(TypeReference),
+    Mut(TypeReference),
     Owned,
+}
+
+impl std::fmt::Debug for ReceiverType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Ref(arg0) => f
+                .debug_tuple("Ref")
+                .field(&format_token_stream(arg0))
+                .finish(),
+            Self::Mut(arg0) => f
+                .debug_tuple("Mut")
+                .field(&format_token_stream(arg0))
+                .finish(),
+            Self::Owned => write!(f, "Owned"),
+        }
+    }
+}
+
+impl PartialEq for ReceiverType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ref(l0), Self::Ref(r0)) => format_token_stream(l0) == format_token_stream(r0),
+            (Self::Mut(l0), Self::Mut(r0)) => format_token_stream(l0) == format_token_stream(r0),
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
+fn format_token_stream(t: &impl ToTokens) -> String {
+    format!("{}", t.to_token_stream())
 }
 
 fn expend(input: ItemTrait) -> Result<TokenStream, String> {
@@ -90,9 +121,19 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
     if func_sig.unsafety.is_some() {
         Err("unsafe fn not supported")?
     }
-    if func_sig.generics.gt_token.is_some() || func_sig.generics.lt_token.is_some() {
-        Err("generics fn not supported")?
+    if func_sig.generics.type_params().next().is_some()
+        || func_sig.generics.const_params().next().is_some()
+    {
+        Err("fn with generic types not supported")?
     }
+
+    let func_liftimes: Vec<LifetimeParam> = {
+        func_sig
+            .generics
+            .lifetimes()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    };
 
     let func_name = func_sig.ident.clone();
 
@@ -107,11 +148,14 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
                     }
                     // println!("{}", r.mutability.to_token_stream());
                     if r.mutability.is_some() {
-                        ReceiverType::Mut
+                        ReceiverType::Mut(match &*r.ty {
+                            syn::Type::Reference(r) => r.clone(),
+                            _ => unreachable!(),
+                        })
                     } else {
                         match &*r.ty {
                             syn::Type::Path(_) => ReceiverType::Owned,
-                            syn::Type::Reference(_) => ReceiverType::Ref,
+                            syn::Type::Reference(r) => ReceiverType::Ref(r.clone()),
                             _ => unreachable!(),
                         }
                     }
@@ -171,6 +215,7 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         func_arg_ids,
         func_arg_tys,
         func_out_type,
+        func_liftimes,
     );
 
     let expanded = quote!(
@@ -201,25 +246,50 @@ fn gen_impl(
     func_arg_ids: Vec<Ident>,
     func_arg_tys: Vec<Type>,
     func_out_type: Type,
+    func_liftimes: Vec<LifetimeParam>,
 ) -> TokenStream {
     let fn_trait = match self_input {
-        ReceiverType::None | ReceiverType::Ref => quote!(std::ops::Fn),
-        ReceiverType::Mut => quote!(std::ops::FnMut),
+        ReceiverType::None | ReceiverType::Ref(_) => quote!(std::ops::Fn),
+        ReceiverType::Mut(_) => quote!(std::ops::FnMut),
         ReceiverType::Owned => quote!(std::ops::FnOnce),
     };
 
     let self_receiver = match self_input {
         ReceiverType::None => quote!(),
-        ReceiverType::Ref => quote!(&self),
-        ReceiverType::Mut => quote!(&mut self),
+        ReceiverType::Ref(t) => {
+            let liftimes = t.lifetime;
+            quote!(&#liftimes self)
+        }
+        ReceiverType::Mut(t) => {
+            let liftimes = t.lifetime;
+            quote!(&#liftimes mut self)
+        }
         ReceiverType::Owned => quote!(self),
+    };
+
+    let for_liftime = {
+        if func_liftimes.is_empty() {
+            quote!()
+        } else {
+            quote!(
+                for<#(#func_liftimes),*>
+            )
+        }
+    };
+
+    let func_liftime_generics = {
+        if func_liftimes.is_empty() {
+            quote!()
+        } else {
+            quote!(<#(#func_liftimes),*>)
+        }
     };
 
     quote::quote!(
         impl<F> #trait_name for F where
-            F: #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
+            F: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
             {
-                fn #func_name(#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
+                fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
                     self(#(#func_arg_ids),*)
                 }
             }
@@ -245,10 +315,17 @@ pub fn functional_trait(
 fn a() {
     let a: TokenStream = quote!(
         trait A {
-            fn aaa(&mut self, i: i32, fqe: (i8, String)) -> i8;
+            fn aaa<'a>(&'a mut self, i: &i32, fqe: (i8, String)) -> &'a i8;
         }
     );
-    let d: syn::ItemTrait = syn::parse2(a).unwrap();
+
+    let d: TokenStream = quote!(
+        trait D {
+            fn d<'c>(&self, b: &'c i32) -> &'c i32;
+        }
+    );
+
+    let d: syn::ItemTrait = syn::parse2(d).unwrap();
 
     let a: TokenStream = expend(d).unwrap().into_token_stream();
     println!("{}", a);

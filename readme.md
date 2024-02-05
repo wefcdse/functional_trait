@@ -10,7 +10,9 @@ the macro impls a trait for `Fn`, `FnMut` or `FnOnce` when the trait:
 
 - the method has a receiver, and the receiver is `&self`, `&mut self` or `self`
 
-- has no generics in the trait or the method (maybe I will add generics in the macro)
+- has no generic types in the trait or the method (may change in the future versions)
+
+- has no generic lifetime in the trait (may change in the future versions)
 
 - has no super trait (may change in the future versions)
 
@@ -38,6 +40,11 @@ trait C {
     fn c(self, i: i32, j: i32) -> i32;
 }
 
+#[functional_trait]
+trait D {
+    fn d<'c>(&self, b: &'c i32) -> &'c i32;
+}
+
 fn main() {
     let f = |a, b| a + b + 10;
     dbg!(f.a(1, 2));
@@ -55,6 +62,14 @@ fn main() {
         a + b + i
     };
     dbg!(f.c(1, 2));
+
+    let f = {
+        fn f(a: &i32) -> &i32 {
+            a
+        }
+        f
+    };
+    f.d(&1);
 }
 
 ```
