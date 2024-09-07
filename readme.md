@@ -10,9 +10,7 @@ the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 
 - the method has a receiver, and the receiver is `&self`, `&mut self` or `self`
 
-- has no generic types in the trait or the method (may change in the future versions)
-
-- has no generic lifetime in the trait (may change in the future versions)
+- has no generic types in the method
 
 - is not unsafe
 
@@ -41,31 +39,46 @@ trait D {
     fn d<'c>(&self, b: &'c i32) -> &'c i32;
 }
 
-fn main() {
-    let f = |a, b| a + b + 10;
-    dbg!(f.a(1, 2));
-
-    let mut i = 0;
-    let mut f = |a, b| {
-        i += 1;
-        a + b + i
-    };
-    dbg!(f.b(1, 2));
-
-    let s = String::new();
-    let f = |a, b| {
-        drop(s);
-        a + b + i
-    };
-    dbg!(f.c(1, 2));
-
-    let f = {
-        fn f(a: &i32) -> &i32 {
-            a
-        }
-        f
-    };
-    f.d(&1);
+#[functional_trait]
+trait E<'a, T: 'a + ?Sized, const AA: usize, T1>: Sized + Clone + Send
+where
+    T1: Send + Sync,
+    T: std::fmt::Display,
+{
+    unsafe fn e<'c>(&'c self, a: &'a T, b: [i32; AA], t1: T1) -> &'a str;
 }
+
+
+let fa = |a, b| a + b + 10;
+dbg!(fa.a(1, 2));
+
+let mut i = 0;
+let mut fb = |a, b| {
+    i += 1;
+    a + b + i
+};
+dbg!(fb.b(1, 2));
+
+let s = String::new();
+let fc = |a, b| {
+    drop(s);
+    a + b + i
+};
+dbg!(fc.c(1, 2));
+
+let fd = {
+    fn f(a: &i32) -> &i32 {
+        a
+    }
+    f
+};
+fd.d(&1);
+
+let fe = |a: &str, b: [i32; 4], _c: i128| {
+    dbg!(a);
+    dbg!(b);
+    "413"
+};
+unsafe { fe.e("4fr13", [3, 5, 1, 1], 9) };
 
 ```

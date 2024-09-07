@@ -44,9 +44,17 @@ fn format_token_stream(t: &impl ToTokens) -> String {
 }
 
 fn expend(input: ItemTrait) -> Result<TokenStream, String> {
-    if input.generics.gt_token.is_some() || input.generics.lt_token.is_some() {
-        Err("Generics not supported ")?
-    }
+    // if input.generics.gt_token.is_some() || input.generics.lt_token.is_some() {
+    //     Err("Generics not supported ")?
+    // }
+    let trait_generics: Vec<syn::GenericParam> =
+        input.generics.params.iter().cloned().collect::<Vec<_>>();
+    // println!("{}", quote!(#(#generics),*));
+    let trait_where: Vec<syn::WherePredicate> = input
+        .generics
+        .where_clause
+        .map(|w| w.predicates.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
     if input.unsafety.is_some() {
         Err("unsafe trait not supported")?
     }
@@ -166,6 +174,8 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         func_liftimes,
         func_is_unsafe,
         supertraits,
+        trait_generics,
+        trait_where,
     );
 
     let expanded = quote!(
@@ -188,7 +198,7 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
 fn void_type() -> Type {
     syn::parse_quote!(())
 }
-
+#[allow(clippy::too_many_arguments)]
 fn gen_impl(
     trait_name: Ident,
     func_name: Ident,
@@ -199,6 +209,8 @@ fn gen_impl(
     func_liftimes: Vec<LifetimeParam>,
     func_is_unsafe: bool,
     supertraits: Vec<syn::TypeParamBound>,
+    trait_generics: Vec<syn::GenericParam>,
+    trait_where: Vec<syn::WherePredicate>,
 ) -> TokenStream {
     let fn_trait = match self_input {
         ReceiverType::None | ReceiverType::Ref(_) => quote!(std::ops::Fn),
@@ -252,12 +264,48 @@ fn gen_impl(
         }
     };
 
-    let func_generic_name = Ident::new("F", Span::call_site());
+    let trait_generics_generics = {
+        if trait_generics.is_empty() {
+            quote!()
+        } else {
+            quote!(#(#trait_generics,)*)
+        }
+    };
+    let trait_generics_trait = {
+        if trait_generics.is_empty() {
+            quote!()
+        } else {
+            // let a = quote::quote! {'a};
+            // let a = a.into_iter().next().unwrap();
+            let t = trait_generics.iter().map(|p| match p {
+                syn::GenericParam::Lifetime(lt) => {
+                    let lt = &lt.lifetime;
+                    quote! {#lt}
+                }
+                syn::GenericParam::Type(ty) => {
+                    let ty = &ty.ident;
+                    quote! {#ty}
+                }
+                syn::GenericParam::Const(co) => {
+                    let co = &co.ident;
+                    quote! { #co}
+                }
+            });
+            quote!(<#(#t),*>)
+        }
+    };
+
+    let trait_where = { quote!(#(#trait_where),*) };
+    let func_generic_name = Ident::new(
+        "FPleaseDontUsThisIdent1193r797g31r7jh930hc931rg",
+        Span::call_site(),
+    );
 
     quote::quote!(
         #[allow(non_camel_case_types)]
-        impl<#func_generic_name #supertraits> #trait_name for #func_generic_name where
+        impl<#trait_generics_generics #func_generic_name #supertraits> #trait_name #trait_generics_trait for #func_generic_name where
             #func_generic_name: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
+            #trait_where
             {
                 #func_is_unsafe fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
                     self(#(#func_arg_ids),*)
@@ -303,7 +351,10 @@ fn a() {
     );
 
     let d: TokenStream = quote!(
-        trait D: Send + Sync {
+        trait D<'a, T: Sized>: Send + Sync
+        where
+            T: Send,
+        {
             fn d<'c>(&self, b: &'c i32) -> &'c i32;
         }
     );
@@ -312,7 +363,7 @@ fn a() {
 
     let a: TokenStream = expend(d).unwrap().into_token_stream();
     println!("{}", a);
-    let e = "ffff".clone();
+    let e = "ffff";
     println!("{}", quote! {compile_error!(#e);});
 }
 
