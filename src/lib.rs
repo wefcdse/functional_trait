@@ -1,6 +1,6 @@
 #![doc = include_str!("../readme.md")]
 
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{ItemTrait, LifetimeParam, Type, TypeReference};
 
@@ -48,9 +48,11 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         Err("Generics not supported ")?
     }
     if input.unsafety.is_some() {
-        Err("unsafe not supported")?
+        Err("unsafe trait not supported")?
     }
-
+    let supertraits: Vec<syn::TypeParamBound> =
+        input.supertraits.iter().cloned().collect::<Vec<_>>();
+    // println!("{}", quote!(#(#supertraits),*));
     let trait_name = input.ident.clone();
     let func = {
         let item = if input.items.len() != 1 {
@@ -66,9 +68,7 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
 
     let func_sig = { func.sig.clone() };
 
-    if func_sig.unsafety.is_some() {
-        Err("unsafe fn not supported")?
-    }
+    let func_is_unsafe = func_sig.unsafety.is_some();
     if func_sig.generics.type_params().next().is_some()
         || func_sig.generics.const_params().next().is_some()
     {
@@ -164,6 +164,8 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         func_arg_tys,
         func_out_type,
         func_liftimes,
+        func_is_unsafe,
+        supertraits,
     );
 
     let expanded = quote!(
@@ -195,6 +197,8 @@ fn gen_impl(
     func_arg_tys: Vec<Type>,
     func_out_type: Type,
     func_liftimes: Vec<LifetimeParam>,
+    func_is_unsafe: bool,
+    supertraits: Vec<syn::TypeParamBound>,
 ) -> TokenStream {
     let fn_trait = match self_input {
         ReceiverType::None | ReceiverType::Ref(_) => quote!(std::ops::Fn),
@@ -233,11 +237,29 @@ fn gen_impl(
         }
     };
 
+    let func_is_unsafe = {
+        if func_is_unsafe {
+            quote!(unsafe)
+        } else {
+            quote!()
+        }
+    };
+    let supertraits = {
+        if supertraits.is_empty() {
+            quote!()
+        } else {
+            quote!(: #(#supertraits)+*)
+        }
+    };
+
+    let func_generic_name = Ident::new("F", Span::call_site());
+
     quote::quote!(
-        impl<F> #trait_name for F where
-            F: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
+        #[allow(non_camel_case_types)]
+        impl<#func_generic_name #supertraits> #trait_name for #func_generic_name where
+            #func_generic_name: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
             {
-                fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
+                #func_is_unsafe fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
                     self(#(#func_arg_ids),*)
                 }
             }
@@ -250,14 +272,20 @@ pub fn functional_trait(
     _args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let input: TokenStream = input.into();
-    let d: syn::ItemTrait = syn::parse2(input.clone()).unwrap();
-    let a: TokenStream = expend(d).unwrap().into_token_stream();
-    quote!(
-        #input
-        #a
-    )
-    .into()
+    let a = || -> Result<proc_macro::TokenStream, String> {
+        let input: TokenStream = input.into();
+        let d: syn::ItemTrait = syn::parse2(input.clone()).map_err(|e| e.to_string())?;
+        let a: TokenStream = expend(d)?.into_token_stream();
+        Ok(quote!(
+            #input
+            #a
+        )
+        .into())
+    };
+    match a() {
+        Ok(v) => v,
+        Err(e) => quote! {compile_error!(#e);}.into(),
+    }
 }
 
 #[test]
@@ -268,8 +296,14 @@ fn a() {
         }
     );
 
-    let d: TokenStream = quote!(
+    let _b: TokenStream = quote!(
         trait D {
+            fn d<'c>(&self, b: &'c i32) -> &'c i32;
+        }
+    );
+
+    let d: TokenStream = quote!(
+        trait D: Send + Sync {
             fn d<'c>(&self, b: &'c i32) -> &'c i32;
         }
     );
@@ -278,6 +312,8 @@ fn a() {
 
     let a: TokenStream = expend(d).unwrap().into_token_stream();
     println!("{}", a);
+    let e = "ffff".clone();
+    println!("{}", quote! {compile_error!(#e);});
 }
 
 fn _aa(_f: impl std::ops::Fn(i32)) {}

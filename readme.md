@@ -14,11 +14,7 @@ the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 
 - has no generic lifetime in the trait (may change in the future versions)
 
-- has no super trait (may change in the future versions)
-
 - is not unsafe
-
-- have no unsafe method (may change in the future versions)
 
 ## Example
 
