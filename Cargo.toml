@@ -1,6 +1,6 @@
 [package]
 name = "functional_trait"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["wefcdse"]
 description = "A macro that impls trait for Fns"

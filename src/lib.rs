@@ -314,7 +314,44 @@ fn gen_impl(
     )
 }
 
-#[doc = include_str!("../readme.md")]
+///
+///
+/// A simple macro that inspired by java's functional interface.
+///
+/// the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
+///
+/// - contains one and only one method
+///
+/// - the method has a receiver, and the receiver is `&self`, `&mut self` or `self`
+///
+/// - has no generic types in the method
+///
+/// - is not unsafe
+///
+/// # Example
+///
+/// ```
+/// use functional_trait::functional_trait;
+///
+/// #[functional_trait]
+/// trait E<'a, T: 'a + ?Sized, const AA: usize, T1>: Sized + Clone + Send
+/// where
+///     T1: Send + Sync,
+///     T: std::fmt::Display,
+/// {
+///     unsafe fn e<'c>(&'c self, a: &'a T, b: [i32; AA], t1: T1) -> &'a str;
+/// }
+///
+/// let fe = |a: &str, b: [i32; 4], _c: i128| {
+///     dbg!(a);
+///     dbg!(b);
+///     "413"
+/// };
+/// unsafe { fe.e("4fr13", [3, 5, 1, 1], 9) };
+///
+/// ```
+///
+///
 #[proc_macro_attribute]
 pub fn functional_trait(
     _args: proc_macro::TokenStream,
