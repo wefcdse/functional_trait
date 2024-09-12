@@ -104,23 +104,56 @@ fn main() {
 }
 
 #[functional_trait]
-trait Helper<'a> {
-    fn call(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+trait Helper {
+    type Output: Future<Output = String> + Send + Sync + 'static;
+    fn call(&self) -> &'static [Self::Output];
 }
 
-async fn async1(s: &str) -> &str {
-    println!("{}", s);
-    s
+#[functional_trait]
+trait Helper1 {
+    type String: Future<Output = String> + Send + Sync + 'static;
+    fn call(&self) -> (Self::String, &'static [*const Self::String]);
 }
-fn take_async(f: impl for<'a> Helper<'a>) {
-    let string = "aaa".to_owned();
-    let fut = f.call(&string);
-    // drop(string1);
-    drop(fut);
-    drop(string);
-}
+
+// impl<AA, F> Helper for F
+// where
+//     AA: Future<Output = String> + Send + Sync,
+//     F: std::ops::Fn() -> AA,
+// {
+//     type Output = AA;
+//     fn call(&self) -> Self::Output {
+//         self()
+//     }
+// }
+
+// impl<AA, F> Helper for F
+// where
+//     AA: Future<Output = String> + Send + Sync,
+//     F: std::ops::Fn() -> AA,
+// {
+//     type Output = AA;
+//     fn call(&self) -> Self::Output {
+//         self()
+//     }
+// }
+
+// fn take_async<'a>(f: impl 'a + Helper<'a>) {
+//     let string = "aaa".to_owned();
+//     // let fut = f.call(&string);
+//     // drop(string1);
+//     // drop(fut);
+//     drop(string);
+// }
 
 fn f13f() {
-    take_async(async1);
-    take_async(async3);
+    let aa = String::new();
+    let f = || async {
+        println!("aa");
+        &aa
+    };
+
+    // take_async(f);
+}
+trait T4 {
+    fn m4(&self, v: impl Send);
 }

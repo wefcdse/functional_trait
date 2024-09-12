@@ -2,7 +2,7 @@
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
-use syn::{ItemTrait, LifetimeParam, Type, TypeReference};
+use syn::{ItemTrait, LifetimeParam, Type, TypePath, TypeReference};
 
 #[derive(Clone)]
 enum ReceiverType {
@@ -63,15 +63,49 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
     // println!("{}", quote!(#(#supertraits),*));
     let trait_name = input.ident.clone();
     let func = {
-        let item = if input.items.len() != 1 {
+        let item = if input
+            .items
+            .iter()
+            .filter(|v| {
+                //
+                !matches!(v, syn::TraitItem::Type(_))
+            })
+            .count()
+            != 1
+        {
             Err("need exactly 1 fn")?
         } else {
-            input.items[0].clone()
+            input
+                .items
+                .iter()
+                .filter(|v| {
+                    //
+                    match v {
+                        syn::TraitItem::Type(_) => false,
+                        _ => true,
+                    }
+                })
+                .next()
+                .unwrap()
+                .clone()
         };
         match item {
             syn::TraitItem::Fn(f) => f,
             _ => Err("need fn")?,
         }
+    };
+    let associate_types: Vec<syn::TraitItemType> = {
+        input
+            .items
+            .iter()
+            .filter_map(|v| {
+                //
+                match v {
+                    syn::TraitItem::Type(t) => Some(t.clone()),
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>()
     };
 
     let func_sig = { func.sig.clone() };
@@ -190,6 +224,7 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         supertraits,
         trait_generics,
         trait_where,
+        associate_types,
     );
 
     let expanded = quote!(
@@ -228,6 +263,7 @@ fn gen_impl(
     supertraits: Vec<syn::TypeParamBound>,
     trait_generics: Vec<syn::GenericParam>,
     trait_where: Vec<syn::WherePredicate>,
+    associate_types: Vec<syn::TraitItemType>,
 ) -> TokenStream {
     let fn_trait = match self_input {
         ReceiverType::None | ReceiverType::Ref(_) => quote!(std::ops::Fn),
@@ -319,14 +355,30 @@ fn gen_impl(
 
     let func_out = {
         match &func_out_type {
-            FuncOutput::Type(v) => quote! {#v},
+            FuncOutput::Type(v) => {
+                if associate_types.is_empty() {
+                    quote! {#v}
+                } else {
+                    let mut v1 = v.clone();
+                    replaced(&mut v1, &associate_types);
+                    quote! {#v1}
+                }
+            }
             FuncOutput::Impl(_) => quote! {#func_out_generic_name},
         }
     };
 
     let func_out_trait = {
         match &func_out_type {
-            FuncOutput::Type(v) => quote! {#v},
+            FuncOutput::Type(v) => {
+                if associate_types.is_empty() {
+                    quote! {#v}
+                } else {
+                    let mut v1 = v.clone();
+                    replaced(&mut v1, &associate_types);
+                    quote! {#v1}
+                }
+            }
             FuncOutput::Impl(v) => quote! {
                 impl #(#v)+*
             },
@@ -355,18 +407,113 @@ fn gen_impl(
         Span::call_site(),
     );
 
+    let associate_types_generics = {
+        let iter = associate_types
+            .iter()
+            .map(|v| ident_of_associate_types_types_generics(&v.ident));
+        quote! {#(#iter, )*}
+    };
+
+    let associate_types_generics_where = {
+        let iter = associate_types.iter().map(|v| {
+            let bounds = v.bounds.iter();
+            let ident = ident_of_associate_types_types_generics(&v.ident);
+            quote! {#ident : #(#bounds)+*}
+        });
+        quote! {#(#iter, )*}
+    };
+
+    let associate_types_generics_impl = {
+        let iter = associate_types.iter().map(|v| {
+            let ident_target = ident_of_associate_types_types_generics(&v.ident);
+            let ident_ori = &v.ident;
+            quote! {type #ident_ori = #ident_target;}
+        });
+        quote! {#(#iter)*}
+    };
+
     quote::quote!(
         #[allow(non_camel_case_types)]
-        impl<#trait_generics_generics #func_out_generic_place #func_generic_name #supertraits> #trait_name #trait_generics_trait for #func_generic_name where
+        impl<#trait_generics_generics #func_out_generic_place #associate_types_generics #func_generic_name #supertraits> #trait_name #trait_generics_trait for #func_generic_name where
             #func_out_impl_trait_where
+            #associate_types_generics_where
             #func_generic_name: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out,
             #trait_where
             {
+                #associate_types_generics_impl
+
                 #func_is_unsafe fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_trait{
                     self(#(#func_arg_ids),*)
                 }
             }
     )
+}
+fn ident_of_associate_types_types_generics(ident: &Ident) -> Ident {
+    let associate_types_generics_name_base = "FATPleaseDontUsThisIdent1193r797g31r7jh930hc931rg";
+    Ident::new(
+        &format!("{}_{}", associate_types_generics_name_base, ident),
+        Span::call_site(),
+    )
+}
+fn replaced(t: &mut Type, associate_types: &[syn::TraitItemType]) {
+    // let ident = ident_of_associate_types_types_generics(&associate_types[0].ident);
+
+    // *t = syn::parse_quote!(#ident);
+    match t {
+        Type::Array(a) => {
+            replaced(&mut a.elem, associate_types);
+        }
+        Type::BareFn(f) => {
+            f.inputs
+                .iter_mut()
+                .for_each(|v| replaced(&mut v.ty, associate_types));
+            match &mut f.output {
+                syn::ReturnType::Default => todo!(),
+                syn::ReturnType::Type(_, t) => replaced(t, associate_types),
+            };
+        }
+        Type::Group(g) => {
+            replaced(&mut g.elem, associate_types);
+        }
+        Type::ImplTrait(_t) => {}
+        Type::Infer(_) => {}
+        Type::Macro(_) => {}
+        Type::Never(_) => {}
+        Type::Paren(p) => {
+            replaced(&mut p.elem, associate_types);
+        }
+        Type::Path(p) => {
+            // let l = p.path.segments.iter_mut().last().unwrap();
+            if let Some(v) = associate_types.iter().find(|v| {
+                let ident = &v.ident;
+                let p1: TypePath = syn::parse_quote!(Self::#ident);
+                format!("{}", quote! {#p1}) == format!("{}", quote! {#p})
+            }) {
+                let ident = ident_of_associate_types_types_generics(&v.ident);
+
+                *t = syn::parse_quote!(#ident);
+            };
+        }
+        Type::Ptr(v) => {
+            replaced(&mut v.elem, associate_types);
+        }
+        Type::Reference(r) => {
+            replaced(&mut r.elem, associate_types);
+        }
+        Type::Slice(s) => {
+            replaced(&mut s.elem, associate_types);
+        }
+        Type::TraitObject(_t) => {
+            // t.bounds.iter_mut().for_each(|_b| {});
+        }
+        Type::Tuple(t) => {
+            t.elems
+                .iter_mut()
+                .for_each(|e| replaced(e, associate_types));
+        }
+        Type::Verbatim(_) => {}
+        _ => {}
+    }
 }
 
 ///
