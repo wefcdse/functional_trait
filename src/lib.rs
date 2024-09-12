@@ -78,14 +78,10 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
             input
                 .items
                 .iter()
-                .filter(|v| {
+                .find(|v| {
                     //
-                    match v {
-                        syn::TraitItem::Type(_) => false,
-                        _ => true,
-                    }
+                    !matches!(v, syn::TraitItem::Type(_))
                 })
-                .next()
                 .unwrap()
                 .clone()
         };

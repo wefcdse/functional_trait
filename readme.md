@@ -21,22 +21,36 @@ the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 use functional_trait::functional_trait;
 use std::future::Future;
 #[functional_trait]
-trait Helper<'a> {
-    fn call(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+trait Helper1<'a> {
+    fn call1(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+}
+// OR
+#[functional_trait]
+trait Helper2<'a> {
+    type Output: Future<Output = &'a str>;
+    fn call2(&self, s: &'a str) -> Self::Output;
 }
 
-async fn async1(s: &str) -> &str {
+async fn asyncfn(s: &str) -> &str {
     println!("{}", s);
     s
 }
-fn take_async(f: impl for<'a> Helper<'a>) {
+fn take_async1(f: impl for<'a> Helper1<'a>) {
     let string = "aaa".to_owned();
-    let fut = f.call(&string);
+    let fut = f.call1(&string);
     // drop(string1);
     drop(fut);
     drop(string);
 }
-take_async(async1);
+fn take_async2(f: impl for<'a> Helper2<'a>) {
+    let string = "aaa".to_owned();
+    let fut = f.call2(&string);
+    // drop(string1);
+    drop(fut);
+    drop(string);
+}
+take_async1(asyncfn);
+take_async2(asyncfn);
 ```
 
 ```rust

@@ -103,17 +103,17 @@ fn main() {
     unsafe { a.aa() };
 }
 
-#[functional_trait]
-trait Helper {
-    type Output: Future<Output = String> + Send + Sync + 'static;
-    fn call(&self) -> &'static [Self::Output];
-}
+// #[functional_trait]
+// trait Helper {
+//     type Output: Future<Output = String> + Send + Sync + 'static;
+//     fn call(&self) -> &'static [Self::Output];
+// }
 
-#[functional_trait]
-trait Helper1 {
-    type String: Future<Output = String> + Send + Sync + 'static;
-    fn call(&self) -> (Self::String, &'static [*const Self::String]);
-}
+// #[functional_trait]
+// trait Helper1 {
+//     type String: Future<Output = String> + Send + Sync + 'static;
+//     fn call(&self) -> (Self::String, &'static [*const Self::String]);
+// }
 
 // impl<AA, F> Helper for F
 // where
@@ -156,4 +156,25 @@ fn f13f() {
 }
 trait T4 {
     fn m4(&self, v: impl Send);
+}
+
+#[functional_trait]
+trait Helper<'a> {
+    type Output: Future<Output = &'a str>;
+    fn call(&self, s: &'a str) -> Self::Output;
+}
+
+async fn async1(s: &str) -> &str {
+    println!("{}", s);
+    s
+}
+fn take_async(f: impl for<'a> Helper<'a>) {
+    let string = "aaa".to_owned();
+    let fut = f.call(&string);
+    // drop(string1);
+    drop(fut);
+    drop(string);
+}
+fn aaa() {
+    take_async(async1);
 }
