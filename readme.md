@@ -16,6 +16,29 @@ the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 
 ## Example
 
+### use as helper trait
+```rust
+use functional_trait::functional_trait;
+use std::future::Future;
+#[functional_trait]
+trait Helper<'a> {
+    fn call(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+}
+
+async fn async1(s: &str) -> &str {
+    println!("{}", s);
+    s
+}
+fn take_async(f: impl for<'a> Helper<'a>) {
+    let string = "aaa".to_owned();
+    let fut = f.call(&string);
+    // drop(string1);
+    drop(fut);
+    drop(string);
+}
+take_async(async1);
+```
+
 ```rust
 use functional_trait::functional_trait;
 

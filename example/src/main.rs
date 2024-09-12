@@ -1,4 +1,5 @@
-use std::{rc::Rc, sync::Arc};
+#![allow(unused)]
+use std::{future::Future, rc::Rc, sync::Arc};
 
 use functional_trait::functional_trait;
 
@@ -36,8 +37,53 @@ where
         todo!()
     }
 }
+#[functional_trait]
+trait T2<'a> {
+    fn a1(&self, s: &'a str) -> impl 'a + Future<Output = ()>;
+}
+
+#[functional_trait]
+trait T3<'a> {
+    fn a1(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+}
+// impl<'a, Fut, F> T2<'a> for F
+// where
+//     Fut: 'a + Future<Output = ()>,
+//     F: Fn(&'a str) -> Fut,
+// {
+//     fn a1(&self, s: &'a str) -> impl 'a + Future<Output = ()> {
+//         self(s)
+//     }
+// }
+fn get_async2(f: impl for<'a> T2<'a>) {
+    let a = String::new();
+
+    let aa = f.a1(&a);
+    // drop(a);
+
+    drop(aa);
+}
+
+fn get_async3(f: impl for<'a> T3<'a>) {
+    let a = String::new();
+
+    let aa = f.a1(&a);
+    // drop(a);
+
+    drop(aa);
+}
+async fn async2(s: &str) {
+    println!("{}", s);
+}
+
+async fn async3(s: &str) -> &str {
+    println!("{}", s);
+    s
+}
 
 fn main() {
+    get_async2(async2);
+    get_async3(async3);
     let nonsend = Rc::new(43);
     let a = || {
         println!("Hello, world!");
@@ -55,4 +101,26 @@ fn main() {
     };
     unsafe { e.e("4fr13", [3, 5, 1, 1], 9) };
     unsafe { a.aa() };
+}
+
+#[functional_trait]
+trait Helper<'a> {
+    fn call(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+}
+
+async fn async1(s: &str) -> &str {
+    println!("{}", s);
+    s
+}
+fn take_async(f: impl for<'a> Helper<'a>) {
+    let string = "aaa".to_owned();
+    let fut = f.call(&string);
+    // drop(string1);
+    drop(fut);
+    drop(string);
+}
+
+fn f13f() {
+    take_async(async1);
+    take_async(async3);
 }

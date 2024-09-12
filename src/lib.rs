@@ -155,9 +155,23 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let func_out_type: Type = match &func_sig.output {
-        syn::ReturnType::Default => void_type(),
-        syn::ReturnType::Type(_, b) => (**b).clone(),
+    let func_out_type: FuncOutput = 'a: {
+        let t = match &func_sig.output {
+            syn::ReturnType::Default => break 'a FuncOutput::Type(void_type()),
+            syn::ReturnType::Type(_, b) => &**b,
+        };
+        let trait_impl = if let Type::ImplTrait(v) = t {
+            v
+        } else {
+            break 'a FuncOutput::Type(t.clone());
+        };
+        FuncOutput::Impl(
+            trait_impl
+                .bounds
+                .iter()
+                .map(|v| v.to_owned())
+                .collect::<Vec<_>>(),
+        )
     };
 
     // print_token_vec(&func_arg_ids);
@@ -186,7 +200,10 @@ fn expend(input: ItemTrait) -> Result<TokenStream, String> {
     // abort()
     Ok(expanded)
 }
-
+enum FuncOutput {
+    Type(Type),
+    Impl(Vec<syn::TypeParamBound>),
+}
 // fn token_vec(vec: &Vec<impl ToTokens>) -> TokenStream {
 //     let tokens = vec.iter().map(ToTokens::into_token_stream).collect();
 //     tokens
@@ -205,7 +222,7 @@ fn gen_impl(
     self_input: ReceiverType,
     func_arg_ids: Vec<Ident>,
     func_arg_tys: Vec<Type>,
-    func_out_type: Type,
+    func_out_type: FuncOutput,
     func_liftimes: Vec<LifetimeParam>,
     func_is_unsafe: bool,
     supertraits: Vec<syn::TypeParamBound>,
@@ -295,6 +312,43 @@ fn gen_impl(
         }
     };
 
+    let func_out_generic_name = Ident::new(
+        "FoutPleaseDontUsThisIdent1193r797g31r7jh930hc931rg",
+        Span::call_site(),
+    );
+
+    let func_out = {
+        match &func_out_type {
+            FuncOutput::Type(v) => quote! {#v},
+            FuncOutput::Impl(_) => quote! {#func_out_generic_name},
+        }
+    };
+
+    let func_out_trait = {
+        match &func_out_type {
+            FuncOutput::Type(v) => quote! {#v},
+            FuncOutput::Impl(v) => quote! {
+                impl #(#v)+*
+            },
+        }
+    };
+
+    let func_out_impl_trait_where = {
+        match &func_out_type {
+            FuncOutput::Type(_) => quote! {},
+            FuncOutput::Impl(v) => quote! {
+                #func_out_generic_name : #(#v)+*,
+            },
+        }
+    };
+
+    let func_out_generic_place = {
+        match &func_out_type {
+            FuncOutput::Type(_) => quote! {},
+            FuncOutput::Impl(_) => quote! {#func_out_generic_name,},
+        }
+    };
+
     let trait_where = { quote!(#(#trait_where),*) };
     let func_generic_name = Ident::new(
         "FPleaseDontUsThisIdent1193r797g31r7jh930hc931rg",
@@ -303,11 +357,12 @@ fn gen_impl(
 
     quote::quote!(
         #[allow(non_camel_case_types)]
-        impl<#trait_generics_generics #func_generic_name #supertraits> #trait_name #trait_generics_trait for #func_generic_name where
-            #func_generic_name: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out_type,
+        impl<#trait_generics_generics #func_out_generic_place #func_generic_name #supertraits> #trait_name #trait_generics_trait for #func_generic_name where
+            #func_out_impl_trait_where
+            #func_generic_name: #for_liftime #fn_trait(#(#func_arg_tys),*) ->#func_out,
             #trait_where
             {
-                #func_is_unsafe fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_type{
+                #func_is_unsafe fn #func_name #func_liftime_generics (#self_receiver, #(#func_arg_ids:#func_arg_tys),* ) -> #func_out_trait{
                     self(#(#func_arg_ids),*)
                 }
             }
@@ -330,6 +385,30 @@ fn gen_impl(
 ///
 /// # Example
 ///
+///
+/// ### use as helper trait
+/// ```rust
+/// use functional_trait::functional_trait;
+/// use std::future::Future;
+/// #[functional_trait]
+/// trait Helper<'a> {
+///     fn call(&self, s: &'a str) -> impl 'a + Future<Output = &'a str>;
+/// }
+///
+/// async fn async1(s: &str) -> &str {
+///     println!("{}", s);
+///     s
+/// }
+/// fn take_async(f: impl for<'a> Helper<'a>) {
+///     let string = "aaa".to_owned();
+///     let fut = f.call(&string);
+///     // drop(string1);
+///     drop(fut);
+///     drop(string);
+/// }
+/// take_async(async1);
+/// ```
+/// ### basic usage
 /// ```
 /// use functional_trait::functional_trait;
 ///
