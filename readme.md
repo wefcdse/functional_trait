@@ -14,6 +14,8 @@ the macro impls a trait for [Fn], [FnMut] or [FnOnce] when the trait:
 
 - is not unsafe
 
+this macro can be used in `no_std` environment.
+
 ## Example
 
 ### use as helper trait

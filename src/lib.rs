@@ -262,9 +262,9 @@ fn gen_impl(
     associate_types: Vec<syn::TraitItemType>,
 ) -> TokenStream {
     let fn_trait = match self_input {
-        ReceiverType::None | ReceiverType::Ref(_) => quote!(std::ops::Fn),
-        ReceiverType::Mut(_) => quote!(std::ops::FnMut),
-        ReceiverType::Owned => quote!(std::ops::FnOnce),
+        ReceiverType::None | ReceiverType::Ref(_) => quote!(::core::ops::Fn),
+        ReceiverType::Mut(_) => quote!(::core::ops::FnMut),
+        ReceiverType::Owned => quote!(::core::ops::FnOnce),
     };
 
     let self_receiver = match self_input {
