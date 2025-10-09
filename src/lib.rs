@@ -574,7 +574,6 @@ fn replaced(t: &mut Type, associate_types: &[syn::TraitItemType]) {
 /// }
 /// take_async(async1);
 /// ```
-
 ///
 ///
 #[proc_macro_attribute]
